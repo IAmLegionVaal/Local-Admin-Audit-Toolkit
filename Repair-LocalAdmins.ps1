@@ -1,0 +1,8 @@
+[CmdletBinding(SupportsShouldProcess=$true)]
+param([ValidateSet('Add','Remove')][string]$Action,[Parameter(Mandatory)][string]$Account,[switch]$CreateRestorePoint,[string]$OutputPath="$env:USERPROFILE\Desktop\LocalAdminRepair")
+$ErrorActionPreference='Stop';New-Item -ItemType Directory -Path $OutputPath -Force|Out-Null;$Log=Join-Path $OutputPath ("repair-{0:yyyyMMdd-HHmmss}.log"-f(Get-Date));function L($m){"$(Get-Date -Format s) $m"|Tee-Object -FilePath $Log -Append};$p=[Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent();if(-not$p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw'Run as Administrator.'}
+Get-LocalGroupMember Administrators|Select Name,ObjectClass,PrincipalSource|Export-Csv (Join-Path $OutputPath 'before.csv') -NoTypeInformation
+if($CreateRestorePoint -and (Get-Command Checkpoint-Computer -ErrorAction SilentlyContinue)){Checkpoint-Computer -Description 'Before local admin repair' -RestorePointType MODIFY_SETTINGS -ErrorAction SilentlyContinue}
+if($Action-eq'Remove'){$members=Get-LocalGroupMember Administrators;$enabledLocal=$members|Where-Object{$_.ObjectClass-eq'User'-and$_.PrincipalSource-eq'Local'};if($enabledLocal.Count-le1){throw'Refusing to remove the final local administrator account.'}}
+if($PSCmdlet.ShouldProcess($Account,"$Action Administrators membership")){if($Action-eq'Add'){Add-LocalGroupMember -Group Administrators -Member $Account}else{Remove-LocalGroupMember -Group Administrators -Member $Account};L"$Action completed for $Account"}
+Get-LocalGroupMember Administrators|Select Name,ObjectClass,PrincipalSource|Export-Csv (Join-Path $OutputPath 'after.csv') -NoTypeInformation;L'Repair workflow finished.'
